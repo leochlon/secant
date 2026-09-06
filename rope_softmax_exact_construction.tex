@@ -1,0 +1,326 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[left=24mm,right=24mm,top=20mm,bottom=18mm]{geometry}
+\usepackage{amsmath,amssymb,microtype,booktabs,fancyhdr}
+\usepackage[hidelinks]{hyperref}
+\hypersetup{pdftitle={RoPE attention is an exact forward-pass gradient step with softmax intact.},
+  pdfauthor={Julie Huang, Maggie Chlon, Leon Chlon},
+  pdfsubject={Exact query-conditioned gradient steps and tokenwise residual decomposition}}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{10pt}
+\setlength{\abovedisplayskip}{12pt}
+\setlength{\belowdisplayskip}{13pt}
+\setlength{\abovedisplayshortskip}{12pt}
+\setlength{\belowdisplayshortskip}{13pt}
+\setlength{\headheight}{12pt}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyfoot[L]{\footnotesize Exact RoPE--softmax construction}
+\fancyfoot[R]{\footnotesize\thepage\,/\,4}
+\renewcommand{\arraystretch}{1.35}
+\newcommand{\R}{\mathbb R}
+\newcommand{\T}{^{\!\top}}
+\newcommand{\calI}{\mathcal I}
+\newcommand{\ddM}{\Delta M}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+\begin{document}
+\fontsize{10}{15.8}\selectfont
+\begin{center}
+{\fontsize{16}{19}\selectfont\bfseries RoPE attention is an exact forward-pass\\gradient step with softmax intact.}\par
+\vspace{6pt}
+{\fontsize{11.5}{15}\selectfont Julie Huang\textsuperscript{1}, Maggie Chlon\textsuperscript{1}, Leon Chlon\textsuperscript{1,2,*}}\par
+{\fontsize{10.5}{14}\selectfont \textsuperscript{1}Hassana Labs;\quad\textsuperscript{2}Department of Information Engineering, Oxford University}\par
+{\fontsize{10.5}{14}\selectfont \textsuperscript{*}Correspondence: \href{mailto:leochlon@robots.ox.ac.uk}{leochlon@robots.ox.ac.uk}}
+\end{center}
+\vspace{-3pt}
+\fontsize{10}{15.8}\selectfont
+\setlength{\parskip}{10pt}
+
+\textbf{Contributions: exact inference-time gradient identity and tokenwise decomposition}
+
+We express RoPE--softmax attention as an exact gradient step for arbitrary projection
+weights and affine biases. The construction places the head's forward pass in
+effective-weight coordinates and resolves its query-dependent write into cached-token
+contributions. Full softmax and rotary position structure remain intact throughout.
+
+\textbf{An explicit forward-pass gradient step.}
+Use the augmented input $u_i$ and projections of section 3; write
+$L_i=\widehat W_qR(p_i)\T/\tau$, $a_{ij}=L_i\widetilde k_j\T$, and
+$c_{ij}=\rho(s_{ij})/Z_i>0$. For $B\in\R^{(m+1)\times r}$ define
+\begin{equation}
+\boxed{\begin{aligned}
+\mathcal E_i(B)&=\frac12\sum_{j\in\calI_i}c_{ij}
+ \norm{a_{ij}\T B-(v_j-\mu_i)}_2^2,\\
+B_i^{(1)}&=0-\nabla_B\mathcal E_i(0)
+ =\sum_{j\in\calI_i}c_{ij}a_{ij}(v_j-\mu_i)=\ddM_i,
+\qquad y_i=\mu_i+u_i\T B_i^{(1)}.
+\end{aligned}}
+\label{eq:regression}
+\end{equation}
+Differentiation acts on $B$, with features, targets, and coefficients held fixed.
+Each query specifies the positive regression weights and reads out the resulting
+unit step from zero.
+
+\textbf{Exact tokenwise residual.}
+At a fixed cache and query position, write $a_j=a_{ij}$ and choose a reference
+query $0$. The adaptive write equals the reference write plus
+\begin{equation}
+\boxed{\displaystyle
+e_i=u_i\T(\ddM_i-\ddM_0)
+=\sum_{j\in\calI}(c_{ij}-c_{0j})(u_i\T a_j)(v_j-\mu).}
+\label{eq:tokenerror}
+\end{equation}
+Each summand identifies a cached token's contribution to the correction.
+Thus $y_i=\mu+u_i\T\ddM_0+e_i$, and $e_iW_o$ is the exact projected correction.
+
+\textbf{RoPE as a bank of positional derivatives.}
+For fixed content $z_0$, $z(p)=R(p)z_0=e^{pA}z_0$ satisfies
+$\partial_p^n z(p)=A^nz(p)$ for $n\geq1$, and
+$z(p+\delta)-z(p)=(e^{\delta A}-I)z(p)$.
+These derivatives and finite differences are directly evaluable on frozen features.
+Our framework connects this derivative-operator representation to the exact
+full-softmax effective matrix. RollPE relates a special RoPE spectrum to Fourier
+differentiation [6].
+
+\textbf{Shared cache, query-conditioned weights.}
+At a fixed cache and position, $\ddM_i=LT_i$: $T_i\in\R^{d\times r}$ combines
+cached outer products with positive coefficients $c_{ij}$, and
+$\operatorname{rank}(\ddM_iW_o)\leq d$ in the original gauge. The mean is shared.
+The matrix gives a secant representation; differentiating the input and the
+coefficients gives the query Jacobian.
+
+\textbf{Equivalent matrices, one output map.}
+For any fixed $g\in\R^{m+1}$, set $\sigma_i=u_i\T g$. Then
+\begin{equation}
+\begin{aligned}
+a_{ij}^{g}&=a_{ij}-g,\qquad s_{ij}^{g}=s_{ij}-\sigma_i,
+\qquad c_{ij}^{g}=\frac{e^{\sigma_i}\rho(s_{ij}-\sigma_i)}{Z_i},\\
+\ddM_i^{g}&=\sum_j c_{ij}^{g}a_{ij}^{g}(v_j-\mu_i),
+\qquad y_i=\mu_i+u_i\T\ddM_i^{g}.
+\end{aligned}
+\label{eq:gauge}
+\end{equation}
+These transformations preserve the probabilities and output. Key shifts give the
+subfamily $g=L_i b$, of dimension at most $d$; general $g$ can add one direction.
+We report matrices in the original-score gauge and evaluate transfer in output coordinates.
+
+\textbf{Connection to linear-attention gradient constructions.}
+Von Oswald's Proposition 1 [1] realizes a least-squares gradient step with linear
+attention; related fast-weight [2] and implicit-gradient [3] constructions use
+linear attention or linearized softmax. Setting $R=I$ and taking $c_{ij}\to1/N_i$,
+with centered regression tokens, his projection/readout choices, and matched scale,
+recovers his step. Equation~\eqref{eq:regression} supplies the exact full-softmax coefficients.
+
+\textbf{Pretrained realization.}
+On Qwen2.5-0.5B, layer 23, all 240 context/head reconstruction rows pass.
+The combined prefix and full-attention writes reconstruct at float64 MSE
+$9.78\times10^{-30}$ and $9.62\times10^{-30}$, respectively.
+
+\medskip
+
+\fontsize{10}{15.8}\selectfont
+\setlength{\parskip}{10pt}
+\textbf{Mathematical construction}
+
+\textbf{1. RoPE and the score in the original weights.}
+Let $x_i\in\R^m$ be a column input to one head, with
+$W_q,W_k\in\R^{m\times d}$ and $W_v\in\R^{m\times r}$.
+Projected vectors are rows: $q_i=x_i\T W_q$, $k_j=x_j\T W_k$,
+and $v_j=x_j\T W_v$. Set $\tau=\sqrt d$.
+For standard RoPE with fixed frequencies [4],
+\begin{equation}
+R(p)=e^{pA},\qquad
+A=\operatorname{diag}_{\ell=1}^{d/2}
+\begin{pmatrix}0&-\omega_\ell\\\omega_\ell&0\end{pmatrix},
+\qquad R(p_i)\T R(p_j)=R(p_j-p_i).
+\label{eq:rope}
+\end{equation}
+With
+$\widetilde q_i=q_iR(p_i)\T$ and $\widetilde k_j=k_jR(p_j)\T$, define
+\begin{equation}
+a_{ij}=\frac{W_qR(p_j-p_i)W_k\T x_j}{\tau}\in\R^m,
+\qquad
+s_{ij}=\frac{\widetilde q_i\widetilde k_j\T}{\tau}=x_i\T a_{ij}.
+\label{eq:score}
+\end{equation}
+\textbf{2. Exact factorization through softmax.}
+For deterministic attention, let $\calI_i$ be a nonempty set of permitted keys;
+causal masking selects this set. With the scores in \eqref{eq:score}, write
+$N_i=|\calI_i|$ and
+\begin{equation}
+Z_i=\sum_{j\in\calI_i}e^{s_{ij}},\qquad
+\mu_i=\frac1{N_i}\sum_{j\in\calI_i}v_j,\qquad
+y_i=\frac1{Z_i}\sum_{j\in\calI_i}e^{s_{ij}}v_j.
+\label{eq:softmax}
+\end{equation}
+Here $\mu_i$ is the \emph{uniform arithmetic mean} of permitted values. The divided difference
+\begin{equation}
+\rho(s)=\int_0^1 e^{ts}\,dt,\quad
+\rho(s)=\frac{e^s-1}{s}\ (s\ne0),\quad
+\rho(0)=1,\quad e^s-1=s\rho(s).
+\label{eq:rho}
+\end{equation}
+gives, for every query,
+\begin{equation}
+\boxed{\begin{aligned}
+ y_i&=\mu_i+x_i\T\ddM_i,\\
+ \ddM_i&=\frac1{\tau Z_i}\sum_{j\in\calI_i}
+ \rho(s_{ij})\big[W_qR(p_j-p_i)W_k\T x_j\big]
+ \big[x_j\T W_v-\mu_i\big].
+\end{aligned}}
+\label{eq:main}
+\end{equation}
+\emph{Proof.} The centered values sum to zero. With all sums over $\calI_i$,
+\begin{equation*}
+y_i-\mu_i
+=\frac{\sum_j(e^{s_{ij}}-1)(v_j-\mu_i)}{Z_i}
+=\frac{\sum_j s_{ij}\rho(s_{ij})(v_j-\mu_i)}{Z_i}
+=x_i\T\ddM_i.\qquad\square
+\end{equation*}
+Setting $R=I$ gives the position-free construction; RoPE supplies relative-position structure.
+
+\textbf{Convention.}
+Reported matrices use the \emph{original-score gauge} of \eqref{eq:main}; gauge
+changes transform both features and coefficients, as in \eqref{eq:gauge}.
+
+\textbf{Transformed scores, additive biases, and QK normalization.}
+For pointwise $\phi$ with $\phi(0)=0$, use $Z=\sum_j e^{\phi(s_{ij})}$ and
+$\rho_\phi(s)=(e^{\phi(s)}-1)/s$ for $s\ne0$; at zero, any finite value works
+(continuously, $\phi'(0)$ when it exists). Sign-preserving soft-caps preserve
+nonnegative regression weights. Additive input-independent biases, including ALiBi,
+are absorbed by $(x_i\T,1)(a_{ij}\T,b_{ij})\T$.
+For nonlinear QK normalization (Qwen3 [5]), use the normalized, rotated query:
+\begin{equation}
+y_i=\mu_i+\widetilde q_i S_i,\qquad
+S_i=\frac1\tau\sum_j\frac{\rho(s_{ij})}{Z_i}\widetilde k_j\T(v_j-\mu_i).
+\label{eq:qknorm}
+\end{equation}
+
+\textbf{Finite-precision evaluation in the declared gauge.}
+With $M_i=\max_j s_{ij}$,
+$\overline Z_i=\sum_j e^{s_{ij}-M_i}$ and $\ell_i=M_i+\log\overline Z_i$,
+\begin{equation}
+c_{ij}=\frac{P_{ij}-e^{-M_i}/\overline Z_i}{s_{ij}}
+=\frac{P_{ij}-e^{-\ell_i}}{s_{ij}}\ (s_{ij}\ne0),\qquad
+c_{ij}=e^{-\ell_i}\ (s_{ij}=0).
+\label{eq:stable}
+\end{equation}
+Evaluate near-zero scores with $e^{-\ell_i}\operatorname{expm1}(s_{ij})/s_{ij}$
+and use log-domain arithmetic elsewhere. Numerical scaling preserves the original gauge.
+
+\medskip
+
+\fontsize{10}{15.8}\selectfont
+\setlength{\parskip}{10pt}
+\textbf{3. Effective residual weights and affine projections.}
+With $W_o\in\R^{r\times m}$ and residual input $x_i$, equation~\eqref{eq:main} gives
+\begin{equation}
+x_i\T+y_iW_o=x_i\T(I_m+\ddM_iW_o)+\mu_iW_o.
+\label{eq:residual}
+\end{equation}
+For projection biases, use $u_j=(x_j\T,1)\T$ and
+$\widehat W=\bigl[W\T\;b\bigr]\T$; the proof is unchanged.
+For pre-normalization, $x_i=\operatorname{Norm}(h_i)$ and the residual is
+$h_i\T+(\mu_i+u_i\T\ddM_i^{\mathrm{aug}})W_o$.
+Add output bias separately and sum projected heads, each with its assigned K/V bank.
+
+\textbf{4. Exact reference decomposition and matrix transfer.}
+Fix a context bank and query position. For anchor $0$, set
+$y_i^{\mathrm{fr}}=\mu+x_i\T\ddM_0$. Then
+\begin{equation}
+\boxed{\begin{aligned}
+y_i-y_i^{\mathrm{fr}}&=x_i\T(\ddM_i-\ddM_0),\\
+\norm{y_i-y_i^{\mathrm{fr}}}_2&\leq\norm{x_i}_2\,\norm{\ddM_i-\ddM_0}_{\mathrm{op}}.
+\end{aligned}}
+\label{eq:freeze}
+\end{equation}
+The contraction in \eqref{eq:freeze} is the exact transfer residual.
+With $L=W_qR(p)\T/\tau$ and $c_{ij}=\rho(s_{ij})/Z_i$,
+\begin{equation}
+\ddM_i-\ddM_0=L\sum_{j\in\calI}(c_{ij}-c_{0j})\widetilde k_j\T(v_j-\mu).
+\label{eq:refresh}
+\end{equation}
+These equations hold in augmented coordinates. Reference write plus coefficient
+refresh gives the exact readout. Freezing omits $x_i\T(\ddM_i-\ddM_0)$;
+equation~\eqref{eq:tokenerror} resolves that residual by cached token.
+
+\textbf{5. Fixed-prefix and full-attention readouts.}
+A fixed-prefix probe excludes the query's own key/value to keep one common bank.
+If full attention adds a self value $v_i^{\mathrm{self}}$ with softmax mass $\pi_i$, then
+\begin{equation}
+y_i^{\mathrm{full}}=(1-\pi_i)y_i^{\mathrm{prefix}}+\pi_i v_i^{\mathrm{self}}.
+\label{eq:full}
+\end{equation}
+The full-bank matrix uses its own scores and mean
+$(N\mu+v_i^{\mathrm{self}})/(N+1)$. A changing bank adds $\mu_i-\mu_0$ to the
+error when the offset is also frozen.
+
+\textbf{6. Pretrained validation and frozen reuse.}
+Qwen2.5-0.5B, layer 23 (zero-indexed): $C=16$ prefixes of 511 tokens,
+all 14 heads, $Q=32$ continuations at one position. Anchor $a=0$ is each article's
+observed next token; the others are the model's 31 highest-ranked distinct nonspecial
+continuations. Each reads the same prefix-only bank.
+
+\textbf{Exact reconstruction.}
+All 240 context/head reconstruction rows pass. Comparison with the native FP32
+write gives MSE $7.01\times10^{-14}$ and maximum absolute error $1.4\times10^{-5}$.
+
+\textbf{Frozen reuse.}
+For each prefix, reuse the anchor's matrix across its other queries.
+Let
+$o_{ci}=\sum_h y_{cih}W_{oh}\in\R^D$ denote the projected attention write.
+\begin{equation}
+E(f)=\frac1C\sum_{c=1}^C\frac1{(Q-1)D}\sum_{i\ne a}
+\norm{f_{ci}-o_{ci}}_2^2,\qquad
+\mathrm{rRMSE}(f)=\sqrt{\frac{E(f)}{E(o_{ca})}}.
+\label{eq:metrics}
+\end{equation}
+Pool squared errors with equal context weights and take ratios after pooling.
+All-anchor evaluation also averages over $a=0,\ldots,Q-1$ before taking ratios.
+Sum projected heads before squaring. Head-level baselines are
+\begin{equation}
+y_i^{\mu}=\mu,\qquad
+y_i^{\mathrm{lin}}=\mu+\frac1N\sum_j s_{ij}(v_j-\mu).
+\label{eq:baselines}
+\end{equation}
+The latter is the first-order softmax expansion at zero logits with unit scale.
+Both undergo the same output projection and aggregation as the exact head.
+
+Pooled MSE of the combined projected write:
+\begin{equation*}
+\begin{array}{lrr}
+\text{Predictor} & \text{Anchor }0 & \text{All anchors}\\
+\text{Constant anchor output} & 0.047787 & 0.045672\\
+\text{Cache mean }(\ddM=0) & 0.124573 & 0.124513\\
+\text{Frozen anchor matrix} & 0.324970 & 0.356763\\
+\text{Linearized softmax} & 0.161842 & 0.162068
+\end{array}
+\end{equation*}
+Target RMS is $0.670545$ for anchor $0$ and $0.670824$ across all anchors.
+Frozen rRMSE is $2.608$ against anchor $0$ and $1.615$ against the cache mean;
+the all-anchor rRMSE is $2.795$. In the all-anchor evaluation, thirteen individual
+heads have rRMSE $0.728$--$0.933$ against their constant-anchor baselines.
+
+\medskip
+\textbf{References}
+
+{\footnotesize [1] J. von Oswald et al., \emph{Transformers Learn In-Context by Gradient
+Descent}, \href{https://proceedings.mlr.press/v202/von-oswald23a.html}{ICML 2023}.}
+
+{\footnotesize [2] I. Schlag, K. Irie, J. Schmidhuber, \emph{Linear Transformers Are Secretly Fast
+Weight Programmers}, \href{https://proceedings.mlr.press/v139/schlag21a.html}{ICML 2021}.}
+
+{\footnotesize [3] D. Dai et al., \emph{Why Can GPT Learn In-Context? Language Models Implicitly
+Perform Gradient Descent as Meta-Optimizers}, \href{https://aclanthology.org/2023.findings-acl.247/}{Findings of ACL 2023}.}
+
+{\footnotesize [4] J. Su et al., \emph{RoFormer: Enhanced Transformer with Rotary Position
+Embedding}, \href{https://arxiv.org/abs/2104.09864}{2021}.}
+
+{\footnotesize [5] Qwen team and Hugging Face, \href{https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen3/modeling_qwen3.py}{Qwen3 attention implementation}, Q/K RMS normalization.}
+
+{\footnotesize [6] C. van de Geijn et al., \emph{Do traveling waves make good positional encodings?},
+\href{https://arxiv.org/html/2511.11668v1}{2025}, appendices E--F.}
+
+\end{document}
