@@ -45,6 +45,15 @@ weights and affine biases. The construction places the head's forward pass in
 effective-weight coordinates and resolves its query-dependent write into cached-token
 contributions. Full softmax and rotary position structure remain intact throughout.
 
+As far as we are aware, ours is the first framework realising the derivative-operator
+framing of RoPE with an exact full-softmax effective-weight representation for arbitrary
+projection weights. Previous attempts like RollPE only connect a special RoPE spectrum to
+Fourier differentiation [6]; our combined framework additionally derives the full-softmax
+effective matrix, exact for the deployed architecture. Our construction is the full-softmax
+treatment overcoming the limitations of Von Oswald's linear-attention treatment of softmax
+transformers [1]; and where related fast-weight [2] and implicit-gradient [3] derivations
+linearize or remove softmax, we preserve full softmax, RoPE, and projection biases intact.
+
 \textbf{An explicit forward-pass gradient step.}
 Use the augmented input $u_i$ and projections of section 3; write
 $L_i=\widehat W_qR(p_i)\T/\tau$, $a_{ij}=L_i\widetilde k_j\T$, and
